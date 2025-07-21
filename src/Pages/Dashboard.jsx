@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+ import React, { useState, useEffect } from 'react';
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer, LineChart, Line, PieChart, Pie, Cell, AreaChart, Area } from 'recharts';
 import { FaSeedling as CropIcon, FaTrophy as TrophyIcon, FaCalendarAlt as SeasonIcon, FaChartLine as AnalyticsIcon, FaExchangeAlt as CompareIcon, FaFilePdf as ExportIcon, FaSun as SunIcon, FaCloudRain as RainIcon, FaTemperatureHigh as TempIcon, FaMapMarkerAlt as LocationIcon, FaUser as UserIcon, FaCog as SettingsIcon, FaHome as DashboardIcon, FaHistory as HistoryIcon, FaChartBar as ChartsIcon, FaTable as TableIcon, FaRegCalendar as CalendarIcon } from 'react-icons/fa';
 
