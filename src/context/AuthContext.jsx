@@ -13,19 +13,27 @@ export const AuthProvider = ({ children }) => {
     const initializeAuth = async () => {
       try {
         const savedUser = localStorage.getItem('user');
-        if (savedUser) {
-          const parsedUser = JSON.parse(savedUser);
+        const savedToken = localStorage.getItem('token');
+
+        if (savedUser && savedToken) {
           // Verify token validity with backend
-          const { data } = await axios.get('/api/auth/verify');
+          const { data } = await axios.get('/api/auth/verify', {
+            headers: {
+              Authorization: `Bearer ${savedToken}`,
+            },
+          });
+
           if (data.valid) {
-            setUser(parsedUser);
+            setUser(JSON.parse(savedUser));
           } else {
             localStorage.removeItem('user');
+            localStorage.removeItem('token');
           }
         }
       } catch (err) {
         console.error('Auth initialization error:', err);
         localStorage.removeItem('user');
+        localStorage.removeItem('token');
       } finally {
         setLoading(false);
       }
@@ -42,11 +50,13 @@ export const AuthProvider = ({ children }) => {
       const response = await axios.post(url, data);
       setUser(response.data.user);
       localStorage.setItem('user', JSON.stringify(response.data.user));
+      localStorage.setItem('token', response.data.token); // Save token
       return { success: true, data: response.data };
     } catch (err) {
-      const errorMessage = err.response?.data?.message || 
-                         err.message || 
-                         'Authentication failed';
+      const errorMessage =
+        err.response?.data?.message ||
+        err.message ||
+        'Authentication failed';
       setError(errorMessage);
       return { success: false, error: errorMessage };
     } finally {
@@ -55,19 +65,31 @@ export const AuthProvider = ({ children }) => {
   };
 
   // Login function
-  const login = (email, password) => 
+  const login = (email, password) =>
     authRequest('/api/auth/login', { email, password });
 
   // Register function
-  const register = (name, email, password) => 
+  const register = (name, email, password) =>
     authRequest('/api/auth/register', { name, email, password });
 
   // Logout function
-  const logout = () => {
-    setUser(null);
-    localStorage.removeItem('user');
-    // Optional: Add API call to invalidate token on server
-    axios.post('/api/auth/logout');
+  const logout = async () => {
+    try {
+      const token = localStorage.getItem('token');
+      if (token) {
+        await axios.post('/api/auth/logout', {}, {
+          headers: {
+            Authorization: `Bearer ${token}`,
+          },
+        });
+      }
+    } catch (err) {
+      console.error('Logout error:', err);
+    } finally {
+      setUser(null);
+      localStorage.removeItem('user');
+      localStorage.removeItem('token');
+    }
   };
 
   const value = {
@@ -78,7 +100,7 @@ export const AuthProvider = ({ children }) => {
     logout,
     register,
     isAuthenticated: !!user,
-    setError // Allow manual error setting if needed
+    setError, // Allow manual error setting if needed
   };
 
   return (
