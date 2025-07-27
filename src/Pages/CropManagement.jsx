@@ -3,9 +3,11 @@ import { FaFilePdf as ExportIcon, FaEdit, FaTrash, FaPlus, FaSeedling as CropIco
 import { jsPDF } from 'jspdf';
 import 'jspdf-autotable';
 
+import { useAuth } from '../context/AuthContext';
+
 const CropManagement = ({ darkMode }) => {
   const [crops, setCrops] = useState([]);
-  
+  const { triggerDashboardRefresh } = useAuth();
   const [newCrop, setNewCrop] = useState({
     name: '',
     currentYield: '',
@@ -26,40 +28,37 @@ const CropManagement = ({ darkMode }) => {
   }, []);
 
   const fetchCrops = async () => {
-    setLoading(true);
-    setError(null);
-    try {
-      const token = localStorage.getItem('token'); // adapt as needed for auth token
-      const res = await fetch('/api/yields', {
-        headers: {
-          'Content-Type': 'application/json',
-          Authorization: `Bearer ${token}`,
-        },
-      });
-      if (!res.ok) throw new Error('Failed to fetch crops');
-      const data = await res.json();
+  setLoading(true);
+  setError(null);
+  try {
+    const token = localStorage.getItem('token');
+    const res = await fetch('/api/yields', {
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${token}`,
+      },
+    });
+    if (!res.ok) throw new Error('Failed to fetch crops');
+    const data = await res.json();
 
-      // Convert backend yields to your crop format
-      // Since backend yields only have cropName, quantity, date, notes - no targetYield or unit or season
-      // We'll keep targetYield as 0 and default unit and season for now
-      const mapped = data.map(y => ({
-        id: y._id,
-        name: y.cropName,
-        currentYield: y.quantity,
-        targetYield: 0,
-        unit: 'kg',
-        season: 'Unknown',
-        plantedDate: '', // no field in backend
-        harvestDate: '', // no field in backend
-        notes: y.notes || '',
-      }));
+    const mapped = data.map(y => ({
+      id: y._id,
+      name: y.cropName,
+      currentYield: y.quantity,
+      targetYield: y.targetYield || 0, // Use the backend value if available
+      unit: y.unit || 'kg', // Use the backend value if available
+      season: y.season || 'Summer 2023', // Use the backend value if available
+      plantedDate: y.plantedDate || '',
+      harvestDate: y.harvestDate || '',
+      notes: y.notes || '',
+    }));
 
-      setCrops(mapped);
-    } catch (err) {
-      setError(err.message);
-    }
-    setLoading(false);
-  };
+    setCrops(mapped);
+  } catch (err) {
+    setError(err.message);
+  }
+  setLoading(false);
+};
 
   // Handle input changes on form
   const handleInputChange = (e) => {
@@ -68,104 +67,107 @@ const CropManagement = ({ darkMode }) => {
   };
 
   // Add or update crop
-  const addCrop = async () => {
-    if (!newCrop.name || !newCrop.currentYield) {
-      alert('Please fill required fields: Crop Name and Current Yield.');
-      return;
+const addCrop = async () => {
+  if (!newCrop.name || !newCrop.currentYield) {
+    alert('Please fill required fields: Crop Name and Current Yield.');
+    return;
+  }
+
+  const token = localStorage.getItem('token');
+
+  if (editingId) {
+    // For editing, update locally only (backend doesn't support update)
+    setCrops(crops.map(crop =>
+      crop.id === editingId
+        ? { ...crop,
+            name: newCrop.name,
+            currentYield: parseFloat(newCrop.currentYield),
+            targetYield: newCrop.targetYield ? parseFloat(newCrop.targetYield) : 0,
+            unit: newCrop.unit,
+            season: newCrop.season,
+            plantedDate: newCrop.plantedDate,
+            harvestDate: newCrop.harvestDate,
+            notes: newCrop.notes,
+          }
+        : crop
+    ));
+    setEditingId(null);
+    setNewCrop({
+      name: '',
+      currentYield: '',
+      targetYield: '',
+      unit: 'kg',
+      season: 'Summer 2023',
+      plantedDate: '',
+      harvestDate: '',
+      notes: '',
+    });
+    return;
+  }
+
+  // Add new crop by posting to backend
+  try {
+    setLoading(true);
+    setError(null);
+    
+    const postBody = {
+      cropName: newCrop.name,
+      quantity: parseFloat(newCrop.currentYield),
+      targetYield: newCrop.targetYield ? parseFloat(newCrop.targetYield) : 0,
+      unit: newCrop.unit,
+      season: newCrop.season,
+      plantedDate: newCrop.plantedDate,
+      harvestDate: newCrop.harvestDate,
+      notes: newCrop.notes || '',
+    };
+
+    const res = await fetch('/api/yields', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${token}`,
+      },
+      body: JSON.stringify(postBody),
+    });
+
+    if (!res.ok) {
+      const errData = await res.json();
+      throw new Error(errData.message || 'Failed to add crop');
     }
 
-    const token = localStorage.getItem('token'); // adapt as needed
+    const created = await res.json();
+    
 
-    if (editingId) {
-      // For editing, update locally only (backend doesn't support update)
-      setCrops(crops.map(crop =>
-        crop.id === editingId
-          ? { ...crop,
-              name: newCrop.name,
-              currentYield: parseFloat(newCrop.currentYield),
-              targetYield: parseFloat(newCrop.targetYield),
-              unit: newCrop.unit,
-              season: newCrop.season,
-              plantedDate: newCrop.plantedDate,
-              harvestDate: newCrop.harvestDate,
-              notes: newCrop.notes,
-            }
-          : crop
-      ));
-      setEditingId(null);
-      setNewCrop({
-        name: '',
-        currentYield: '',
-        targetYield: '',
-        unit: 'kg',
-        season: 'Summer 2023',
-        plantedDate: '',
-        harvestDate: '',
-        notes: '',
-      });
-      return;
-    }
+    const newEntry = {
+      id: created._id,
+      name: created.cropName,
+      currentYield: created.quantity,
+      targetYield: created.targetYield || 0,
+      unit: created.unit || 'kg',
+      season: created.season || 'Summer 2023',
+      plantedDate: created.plantedDate || '',
+      harvestDate: created.harvestDate || '',
+      notes: created.notes || '',
+    };
 
-    // Add new crop by posting to backend
-    try {
-      setLoading(true);
-      setError(null);
-
-      const postBody = {
-        cropName: newCrop.name,
-        quantity: parseFloat(newCrop.currentYield),
-        date: new Date().toISOString(), // using current date for simplicity
-        notes: newCrop.notes || '',
-      };
-
-      const res = await fetch('/api/yields', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          Authorization: `Bearer ${token}`,
-        },
-        body: JSON.stringify(postBody),
-      });
-
-      if (!res.ok) {
-        const errData = await res.json();
-        throw new Error(errData.message || 'Failed to add crop');
-      }
-
-      const created = await res.json();
-
-      // Add to local state with default values for missing fields
-      const newEntry = {
-        id: created._id,
-        name: created.cropName,
-        currentYield: created.quantity,
-        targetYield: 0,
-        unit: 'kg',
-        season: 'Unknown',
-        plantedDate: '',
-        harvestDate: '',
-        notes: created.notes || '',
-      };
-
-      setCrops([...crops, newEntry]);
-
-      setNewCrop({
-        name: '',
-        currentYield: '',
-        targetYield: '',
-        unit: 'kg',
-        season: 'Summer 2023',
-        plantedDate: '',
-        harvestDate: '',
-        notes: '',
-      });
-    } catch (err) {
-      setError(err.message);
-    } finally {
-      setLoading(false);
-    }
-  };
-
+    setCrops([...crops, newEntry]);
+     triggerDashboardRefresh();
+    setNewCrop({
+      name: '',
+      currentYield: '',
+      targetYield: '',
+      unit: 'kg',
+      season: 'Summer 2023',
+      plantedDate: '',
+      harvestDate: '',
+      notes: '',
+    });
+  } catch (err) {
+    setError(err.message);
+  } finally {
+    setLoading(false);
+  }
+};
   // Edit crop - load crop info into form
   const editCrop = (id) => {
     const cropToEdit = crops.find(crop => crop.id === id);

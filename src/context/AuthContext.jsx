@@ -1,5 +1,6 @@
+// context/AuthContext.js
 import React, { createContext, useContext, useState, useEffect } from 'react';
-import axios from '../lib/axios';
+import axios from '../lib/axios'; // Make sure this path is correct
 
 export const AuthContext = createContext();
 
@@ -7,6 +8,17 @@ export const AuthProvider = ({ children }) => {
   const [user, setUser] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
+  
+  // --- ADDITION: State for dashboard refresh signal ---
+  const [dashboardRefreshSignal, setDashboardRefreshSignal] = useState(0);
+  // --- END ADDITION ---
+
+  // --- ADDITION: Function to trigger dashboard refresh ---
+  const triggerDashboardRefresh = () => {
+    console.log("Auth Context: Triggering dashboard refresh"); // Debug log
+    setDashboardRefreshSignal(prev => prev + 1);
+  };
+  // --- END ADDITION ---
 
   // Initialize auth state on mount
   useEffect(() => {
@@ -89,6 +101,8 @@ export const AuthProvider = ({ children }) => {
       setUser(null);
       localStorage.removeItem('user');
       localStorage.removeItem('token');
+      // Reset signal on logout
+      setDashboardRefreshSignal(0);
     }
   };
 
@@ -101,6 +115,10 @@ export const AuthProvider = ({ children }) => {
     register,
     isAuthenticated: !!user,
     setError, // Allow manual error setting if needed
+    // --- ADDITION: Expose the new signal and trigger function ---
+    dashboardRefreshSignal,
+    triggerDashboardRefresh
+    // --- END ADDITION ---
   };
 
   return (
