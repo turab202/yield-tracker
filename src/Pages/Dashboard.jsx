@@ -84,30 +84,38 @@ const Dashboard = ({ darkMode }) => {
 
     fetchData();
   }, []);
+ const calculateForecast = (historyData) => {
+  if (!historyData || historyData.length < 2) return;
 
-  const calculateForecast = (historyData) => {
-    if (historyData.length > 2) {
-      const lastWheat = historyData[historyData.length - 1].Wheat;
-      const prevWheat = historyData[historyData.length - 2].Wheat;
-      const wheatTrend = lastWheat - prevWheat;
-      const lastCorn = historyData[historyData.length - 1].Corn;
-      const prevCorn = historyData[historyData.length - 2].Corn;
-      const cornTrend = lastCorn - prevCorn;
-      const lastSoybeans = historyData[historyData.length - 1].Soybeans;
-      const prevSoybeans = historyData[historyData.length - 2].Soybeans;
-      const soybeansTrend = lastSoybeans - prevSoybeans;
-      
-      setForecastData([
-        ...historyData.slice(-6).map(item => ({ name: item.season.split(' ')[0], ...item })),
-        { 
-          name: 'Next (Forecast)', 
-          Wheat: Math.round(lastWheat + wheatTrend * 0.8), 
-          Corn: Math.round(lastCorn + cornTrend * 0.8), 
-          Soybeans: Math.round(lastSoybeans + soybeansTrend * 0.8) 
-        }
-      ]);
-    }
-  };
+  const latest = historyData[historyData.length - 1];
+  const previous = historyData[historyData.length - 2];
+
+  // Get crop keys dynamically, ignoring 'season' and 'name'
+  const cropKeys = Object.keys(latest).filter(key => key !== 'season' && key !== 'name');
+
+  // Build forecast object
+  const forecast = { name: 'Next (Forecast)' };
+  cropKeys.forEach(crop => {
+    const trend = latest[crop] - previous[crop];
+    forecast[crop] = Math.round(latest[crop] + trend * 0.8);
+  });
+
+  // Include last 6 seasons + forecast
+  const lastSix = historyData.slice(-6).map(item => {
+    const itemCrops = {};
+    cropKeys.forEach(crop => {
+      itemCrops[crop] = item[crop] || 0;
+    });
+    return {
+      name: item.season.split(' ')[0],
+      ...itemCrops
+    };
+  });
+
+  setForecastData([...lastSix, forecast]);
+};
+
+
 
   const updateYield = async (id, value) => {
     try {
@@ -385,38 +393,64 @@ const Dashboard = ({ darkMode }) => {
       {/* Forecast and Efficiency */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
         {/* Forecast Card */}
-        {forecastData && (
-          <div className={`rounded-xl p-6 shadow-md ${darkMode ? 'bg-gray-800' : 'bg-white'}`}>
-            <h2 className={`text-xl font-semibold mb-4 ${darkMode ? 'text-blue-400' : 'text-blue-600'}`}>
-              Next Season Forecast
-            </h2>
-            <div className="h-64">
-              <ResponsiveContainer width="100%" height="100%">
-                <AreaChart
-                  data={forecastData}
-                  margin={{ top: 10, right: 30, left: 0, bottom: 0 }}
-                >
-                  <CartesianGrid strokeDasharray="3 3" stroke={darkMode ? '#4B5563' : '#E5E7EB'} />
-                  <XAxis dataKey="name" stroke={darkMode ? '#9CA3AF' : '#6B7280'} />
-                  <YAxis stroke={darkMode ? '#9CA3AF' : '#6B7280'} />
-                  <Tooltip 
-                    contentStyle={darkMode ? { 
-                      backgroundColor: '#1F2937',
-                      borderColor: '#374151',
-                      color: '#F3F4F6'
-                    } : null}
-                  />
-                  <Area type="monotone" dataKey="Wheat" stackId="1" stroke="#f59e0b" fill="#f59e0b" fillOpacity={0.4} />
-                  <Area type="monotone" dataKey="Corn" stackId="1" stroke="#10b981" fill="#10b981" fillOpacity={0.4} />
-                  <Area type="monotone" dataKey="Soybeans" stackId="1" stroke="#3b82f6" fill="#3b82f6" fillOpacity={0.4} />
-                </AreaChart>
-              </ResponsiveContainer>
-            </div>
-            <p className={`text-xs mt-3 italic ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>
-              Based on historical trends and seasonal patterns
-            </p>
-          </div>
-        )}
+      {forecastData && (
+  <div className={`rounded-xl p-6 shadow-md ${darkMode ? 'bg-gray-800' : 'bg-white'}`}>
+    <h2 className={`text-xl font-semibold mb-4 ${darkMode ? 'text-blue-400' : 'text-blue-600'}`}>
+      Next Season Forecast
+    </h2>
+    <div className="h-64">
+      <ResponsiveContainer width="100%" height="100%">
+        <AreaChart
+          data={forecastData}
+          margin={{ top: 10, right: 30, left: 0, bottom: 0 }}
+        >
+          <CartesianGrid strokeDasharray="3 3" stroke={darkMode ? '#4B5563' : '#E5E7EB'} />
+          <XAxis dataKey="name" stroke={darkMode ? '#9CA3AF' : '#6B7280'} />
+          <YAxis stroke={darkMode ? '#9CA3AF' : '#6B7280'} />
+          <Tooltip 
+            contentStyle={darkMode ? { 
+              backgroundColor: '#1F2937',
+              borderColor: '#374151',
+              color: '#F3F4F6'
+            } : null}
+          />
+          {hasCrops ? (
+            // For real users - only show their crops
+            crops.map((crop, index) => (
+              <Area
+                key={crop._id}
+                type="monotone"
+                dataKey={crop.cropName}
+                stackId="1"
+                stroke={COLORS[index % COLORS.length]}
+                fill={COLORS[index % COLORS.length]}
+                fillOpacity={0.4}
+              />
+            ))
+          ) : (
+            // For demo users - show all available crops
+            forecastData && Object.keys(forecastData[0])
+              .filter(key => key !== 'name' && key !== 'season')
+              .map((crop, index) => (
+                <Area
+                  key={crop}
+                  type="monotone"
+                  dataKey={crop}
+                  stackId="1"
+                  stroke={COLORS[index % COLORS.length]}
+                  fill={COLORS[index % COLORS.length]}
+                  fillOpacity={0.4}
+                />
+              ))
+          )}
+        </AreaChart>
+      </ResponsiveContainer>
+    </div>
+    <p className={`text-xs mt-3 italic ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>
+      Based on historical trends and seasonal patterns
+    </p>
+  </div>
+)}
 
         {/* Efficiency Card */}
         <div className={`rounded-xl p-6 shadow-md ${darkMode ? 'bg-gray-800' : 'bg-white'}`}>
@@ -436,10 +470,11 @@ const Dashboard = ({ darkMode }) => {
                 <Tooltip content={<CustomTooltip />} />
                 <Bar dataKey="efficiency">
                   {efficiencyData.map((entry, index) => (
-                    <Cell 
-                      key={`cell-${index}`} 
-                      fill={entry.trend === 'up' ? (darkMode ? '#10b981' : '#10b981') : (darkMode ? '#ef4444' : '#ef4444')} 
-                    />
+                   <Cell 
+  key={`cell-${index}`} 
+  fill={entry.efficiency > 0 ? (darkMode ? '#10b981' : '#10b981') : (darkMode ? '#ef4444' : '#ef4444')} 
+/>
+
                   ))}
                 </Bar>
               </BarChart>
