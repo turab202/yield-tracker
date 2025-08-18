@@ -2,7 +2,7 @@
 import axios from 'axios';
 
 const api = axios.create({
-  baseURL: 'https://farming-c693.onrender.com/api', // Adjust this to your backend URL
+  baseURL: `${import.meta.env.VITE_API_BASE_URL}/api`, // use env instead of hardcoding
 });
 
 // Add request interceptor to include auth token
@@ -19,7 +19,6 @@ api.interceptors.response.use(
   (response) => response,
   (error) => {
     if (error.response && error.response.status === 401) {
-      // Handle unauthorized access (e.g., redirect to login)
       window.location.href = '/login';
     }
     return Promise.reject(error);
