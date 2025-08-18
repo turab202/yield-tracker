@@ -3,11 +3,10 @@ import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, Legend, Responsi
 
 const History = ({ darkMode }) => {
   const [historicalData, setHistoricalData] = useState([]);
-  const [cropNames, setCropNames] = useState([]); // all crop names dynamically
+  const [cropNames, setCropNames] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
 
-  // Convert date to season string (same as before)
   const getSeasonFromDate = (dateStr) => {
     const date = new Date(dateStr);
     const month = date.getMonth();
@@ -26,30 +25,38 @@ const History = ({ darkMode }) => {
       setError(null);
 
       try {
-        const token = localStorage.getItem('token'); // adjust for your auth if needed
-        const res = await fetch('/api/yields', {
+        // Check if environment variable is set
+        const baseUrl = import.meta.env.VITE_API_BASE_URL;
+        if (!baseUrl) {
+          throw new Error('API base URL is not configured');
+        }
+
+        const token = localStorage.getItem('token');
+        const response = await fetch(`${baseUrl}/api/yields`, {
           headers: {
             'Content-Type': 'application/json',
             Authorization: token ? `Bearer ${token}` : undefined,
           },
         });
-        if (!res.ok) throw new Error('Failed to fetch yield data');
-        const data = await res.json();
 
-        // Collect unique crop names
+        if (!response.ok) {
+          throw new Error(`HTTP error! status: ${response.status}`);
+        }
+
+        const data = await response.json();
+
+        // Process data
         const cropsSet = new Set();
-
-        // Group by season and cropName, summing quantities
         const grouped = {};
+
         data.forEach(({ cropName, quantity, season }) => {
-  cropsSet.add(cropName);
+          cropsSet.add(cropName);
           if (!grouped[season]) grouped[season] = { season };
           grouped[season][cropName] = (grouped[season][cropName] || 0) + quantity;
         });
 
-        setCropNames([...cropsSet].sort()); // sort crop names alphabetically
+        setCropNames([...cropsSet].sort());
 
-        // Sort seasons chronologically
         const seasonOrder = { Winter: 0, Spring: 1, Summer: 2, Fall: 3 };
         const sortedData = Object.values(grouped).sort((a, b) => {
           const [seasonA, yearA] = a.season.split(' ');
@@ -60,7 +67,8 @@ const History = ({ darkMode }) => {
 
         setHistoricalData(sortedData);
       } catch (err) {
-        setError(err.message || 'Unknown error');
+        console.error('Fetch error:', err);
+        setError(err.message || 'Failed to load historical data');
       } finally {
         setLoading(false);
       }
@@ -68,6 +76,9 @@ const History = ({ darkMode }) => {
 
     fetchYields();
   }, []);
+
+  // Color palette for chart lines
+  const lineColors = ['#f59e0b', '#10b981', '#3b82f6', '#ef4444', '#8b5cf6', '#14b8a6', '#db2777', '#eab308'];
 
   return (
     <div className={`rounded-xl p-6 shadow-md ${darkMode ? 'bg-gray-800' : 'bg-white'}`}>
@@ -77,12 +88,21 @@ const History = ({ darkMode }) => {
         </h2>
       </div>
 
-      {loading && (
-        <p className={darkMode ? 'text-gray-300' : 'text-gray-700'}>Loading data...</p>
-      )}
-      {error && <p className="text-red-500">Error: {error}</p>}
-
-      {!loading && !error && (
+      {loading ? (
+        <div className="flex justify-center items-center h-64">
+          <p className={darkMode ? 'text-gray-300' : 'text-gray-700'}>Loading data...</p>
+        </div>
+      ) : error ? (
+        <div className="p-4 rounded bg-red-100 border border-red-400 text-red-700">
+          <p>Error: {error}</p>
+          <button 
+            onClick={() => window.location.reload()}
+            className="mt-2 px-3 py-1 bg-red-600 text-white rounded hover:bg-red-700"
+          >
+            Retry
+          </button>
+        </div>
+      ) : (
         <>
           <div className="h-96 mb-8">
             <ResponsiveContainer width="100%" height="100%">
@@ -91,99 +111,73 @@ const History = ({ darkMode }) => {
                 margin={{ top: 20, right: 30, left: 20, bottom: 5 }}
               >
                 <CartesianGrid strokeDasharray="3 3" stroke={darkMode ? '#4B5563' : '#E5E7EB'} />
-                <XAxis dataKey="season" stroke={darkMode ? '#9CA3AF' : '#6B7280'} />
-                <YAxis stroke={darkMode ? '#9CA3AF' : '#6B7280'} />
+                <XAxis 
+                  dataKey="season" 
+                  stroke={darkMode ? '#9CA3AF' : '#6B7280'} 
+                />
+                <YAxis 
+                  stroke={darkMode ? '#9CA3AF' : '#6B7280'} 
+                  label={{
+                    value: 'Yield (kg)',
+                    angle: -90,
+                    position: 'insideLeft',
+                    style: { fill: darkMode ? '#9CA3AF' : '#6B7280' }
+                  }}
+                />
                 <Tooltip
-                  contentStyle={
-                    darkMode
-                      ? {
-                          backgroundColor: '#1F2937',
-                          borderColor: '#374151',
-                          color: '#F3F4F6',
-                        }
-                      : null
-                  }
+                  contentStyle={darkMode ? {
+                    backgroundColor: '#1F2937',
+                    borderColor: '#374151',
+                    color: '#F3F4F6',
+                  } : null}
                 />
                 <Legend />
-                {cropNames.map((cropName, idx) => {
-                  // Generate distinct colors dynamically (simple palette)
-                  const colors = ['#f59e0b', '#10b981', '#3b82f6', '#ef4444', '#8b5cf6', '#14b8a6', '#db2777', '#eab308'];
-                  return (
-                    <Line
-                      key={cropName}
-                      type="monotone"
-                      dataKey={cropName}
-                      stroke={colors[idx % colors.length]}
-                      strokeWidth={2}
-                      dot={{ r: 3 }}
-                      activeDot={{ r: 5 }}
-                    />
-                  );
-                })}
+                {cropNames.map((cropName, idx) => (
+                  <Line
+                    key={cropName}
+                    type="monotone"
+                    dataKey={cropName}
+                    stroke={lineColors[idx % lineColors.length]}
+                    strokeWidth={2}
+                    dot={{ r: 3 }}
+                    activeDot={{ r: 5 }}
+                  />
+                ))}
               </LineChart>
             </ResponsiveContainer>
           </div>
 
           <div className="overflow-x-auto">
-            <table
-              className={`min-w-full divide-y ${
-                darkMode ? 'divide-gray-700' : 'divide-gray-200'
-              }`}
-            >
+            <table className={`min-w-full divide-y ${darkMode ? 'divide-gray-700' : 'divide-gray-200'}`}>
               <thead className={darkMode ? 'bg-gray-700' : 'bg-gray-50'}>
                 <tr>
-                  <th
-                    scope="col"
-                    className={`px-6 py-3 text-left text-xs font-medium uppercase tracking-wider ${
-                      darkMode ? 'text-gray-300' : 'text-gray-500'
-                    }`}
-                  >
+                  <th scope="col" className={`px-6 py-3 text-left text-xs font-medium uppercase tracking-wider ${darkMode ? 'text-gray-300' : 'text-gray-500'}`}>
                     Season
                   </th>
                   {cropNames.map((cropName) => (
                     <th
                       key={cropName}
                       scope="col"
-                      className={`px-6 py-3 text-left text-xs font-medium uppercase tracking-wider ${
-                        darkMode ? 'text-gray-300' : 'text-gray-500'
-                      }`}
+                      className={`px-6 py-3 text-left text-xs font-medium uppercase tracking-wider ${darkMode ? 'text-gray-300' : 'text-gray-500'}`}
                     >
                       {cropName} (kg)
                     </th>
                   ))}
                 </tr>
               </thead>
-              <tbody
-                className={`divide-y ${
-                  darkMode ? 'divide-gray-700 bg-gray-800' : 'divide-gray-200 bg-white'
-                }`}
-              >
+              <tbody className={`divide-y ${darkMode ? 'divide-gray-700 bg-gray-800' : 'divide-gray-200 bg-white'}`}>
                 {historicalData.map((data, index) => (
                   <tr
                     key={index}
-                    className={
-                      index % 2 === 0
-                        ? darkMode
-                          ? 'bg-gray-800'
-                          : 'bg-white'
-                        : darkMode
-                        ? 'bg-gray-700'
-                        : 'bg-gray-50'
-                    }
+                    className={index % 2 === 0 ? (darkMode ? 'bg-gray-800' : 'bg-white') : (darkMode ? 'bg-gray-700' : 'bg-gray-50')}
                   >
-                    <td
-                      className={`px-6 py-4 whitespace-nowrap text-sm ${
-                        darkMode ? 'text-gray-300' : 'text-gray-700'
-                      }`}
-                    >
+                    <td className={`px-6 py-4 whitespace-nowrap text-sm ${darkMode ? 'text-gray-300' : 'text-gray-700'}`}>
                       {data.season}
                     </td>
                     {cropNames.map((cropName) => (
                       <td
                         key={cropName}
-                        className={`px-6 py-4 whitespace-nowrap text-sm ${
-                          darkMode ? 'text-gray-300' : 'text-gray-700'
-                        }`}
+                        className={`px-6 py-4 whitespace-nowrap text-sm ${darkMode ? 'text-gray-300' : 'text-gray-700'}`}
                       >
                         {data[cropName] || 0}
                       </td>
