@@ -7,9 +7,6 @@ const History = ({ darkMode }) => {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
 
-  // ✅ Backend URL from environment
-  const BACKEND_URL = import.meta.env.VITE_BACKEND_URL;
-
   // Convert date to season string (same as before)
   const getSeasonFromDate = (dateStr) => {
     const date = new Date(dateStr);
@@ -30,7 +27,7 @@ const History = ({ darkMode }) => {
 
       try {
         const token = localStorage.getItem('token'); // adjust for your auth if needed
-        const res = await fetch(`${BACKEND_URL}/api/yields`, {
+        const res = await fetch('/api/yields', {
           headers: {
             'Content-Type': 'application/json',
             Authorization: token ? `Bearer ${token}` : undefined,
@@ -45,7 +42,7 @@ const History = ({ darkMode }) => {
         // Group by season and cropName, summing quantities
         const grouped = {};
         data.forEach(({ cropName, quantity, season }) => {
-          cropsSet.add(cropName);
+  cropsSet.add(cropName);
           if (!grouped[season]) grouped[season] = { season };
           grouped[season][cropName] = (grouped[season][cropName] || 0) + quantity;
         });
@@ -109,6 +106,7 @@ const History = ({ darkMode }) => {
                 />
                 <Legend />
                 {cropNames.map((cropName, idx) => {
+                  // Generate distinct colors dynamically (simple palette)
                   const colors = ['#f59e0b', '#10b981', '#3b82f6', '#ef4444', '#8b5cf6', '#14b8a6', '#db2777', '#eab308'];
                   return (
                     <Line
