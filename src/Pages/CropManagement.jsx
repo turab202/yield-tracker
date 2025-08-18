@@ -22,43 +22,46 @@ const CropManagement = ({ darkMode }) => {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
 
+  // ✅ Use backend URL from env
+  const BACKEND_URL = import.meta.env.VITE_BACKEND_URL;
+
   // Fetch crops (yields) from backend on mount
   useEffect(() => {
     fetchCrops();
   }, []);
 
   const fetchCrops = async () => {
-  setLoading(true);
-  setError(null);
-  try {
-    const token = localStorage.getItem('token');
-    const res = await fetch('/api/yields', {
-      headers: {
-        'Content-Type': 'application/json',
-        Authorization: `Bearer ${token}`,
-      },
-    });
-    if (!res.ok) throw new Error('Failed to fetch crops');
-    const data = await res.json();
+    setLoading(true);
+    setError(null);
+    try {
+      const token = localStorage.getItem('token');
+      const res = await fetch(`${BACKEND_URL}/api/yields`, {
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${token}`,
+        },
+      });
+      if (!res.ok) throw new Error('Failed to fetch crops');
+      const data = await res.json();
 
-    const mapped = data.map(y => ({
-      id: y._id,
-      name: y.cropName,
-      currentYield: y.quantity,
-      targetYield: y.targetYield || 0, // Use the backend value if available
-      unit: y.unit || 'kg', // Use the backend value if available
-      season: y.season || 'Summer 2023', // Use the backend value if available
-      plantedDate: y.plantedDate || '',
-      harvestDate: y.harvestDate || '',
-      notes: y.notes || '',
-    }));
+      const mapped = data.map(y => ({
+        id: y._id,
+        name: y.cropName,
+        currentYield: y.quantity,
+        targetYield: y.targetYield || 0,
+        unit: y.unit || 'kg',
+        season: y.season || 'Summer 2023',
+        plantedDate: y.plantedDate || '',
+        harvestDate: y.harvestDate || '',
+        notes: y.notes || '',
+      }));
 
-    setCrops(mapped);
-  } catch (err) {
-    setError(err.message);
-  }
-  setLoading(false);
-};
+      setCrops(mapped);
+    } catch (err) {
+      setError(err.message);
+    }
+    setLoading(false);
+  };
 
   // Handle input changes on form
   const handleInputChange = (e) => {
@@ -67,107 +70,106 @@ const CropManagement = ({ darkMode }) => {
   };
 
   // Add or update crop
-const addCrop = async () => {
-  if (!newCrop.name || !newCrop.currentYield) {
-    alert('Please fill required fields: Crop Name and Current Yield.');
-    return;
-  }
-
-  const token = localStorage.getItem('token');
-
-  if (editingId) {
-    // For editing, update locally only (backend doesn't support update)
-    setCrops(crops.map(crop =>
-      crop.id === editingId
-        ? { ...crop,
-            name: newCrop.name,
-            currentYield: parseFloat(newCrop.currentYield),
-            targetYield: newCrop.targetYield ? parseFloat(newCrop.targetYield) : 0,
-            unit: newCrop.unit,
-            season: newCrop.season,
-            plantedDate: newCrop.plantedDate,
-            harvestDate: newCrop.harvestDate,
-            notes: newCrop.notes,
-          }
-        : crop
-    ));
-    setEditingId(null);
-    setNewCrop({
-      name: '',
-      currentYield: '',
-      targetYield: '',
-      unit: 'kg',
-      season: 'Summer 2023',
-      plantedDate: '',
-      harvestDate: '',
-      notes: '',
-    });
-    return;
-  }
-
-  // Add new crop by posting to backend
-  try {
-    setLoading(true);
-    setError(null);
-    
-    const postBody = {
-      cropName: newCrop.name,
-      quantity: parseFloat(newCrop.currentYield),
-      targetYield: newCrop.targetYield ? parseFloat(newCrop.targetYield) : 0,
-      unit: newCrop.unit,
-      season: newCrop.season,
-      plantedDate: newCrop.plantedDate,
-      harvestDate: newCrop.harvestDate,
-      notes: newCrop.notes || '',
-    };
-
-    const res = await fetch('/api/yields', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        Authorization: `Bearer ${token}`,
-      },
-      body: JSON.stringify(postBody),
-    });
-
-    if (!res.ok) {
-      const errData = await res.json();
-      throw new Error(errData.message || 'Failed to add crop');
+  const addCrop = async () => {
+    if (!newCrop.name || !newCrop.currentYield) {
+      alert('Please fill required fields: Crop Name and Current Yield.');
+      return;
     }
 
-    const created = await res.json();
-    
+    const token = localStorage.getItem('token');
 
-    const newEntry = {
-      id: created._id,
-      name: created.cropName,
-      currentYield: created.quantity,
-      targetYield: created.targetYield || 0,
-      unit: created.unit || 'kg',
-      season: created.season || 'Summer 2023',
-      plantedDate: created.plantedDate || '',
-      harvestDate: created.harvestDate || '',
-      notes: created.notes || '',
-    };
+    if (editingId) {
+      setCrops(crops.map(crop =>
+        crop.id === editingId
+          ? { ...crop,
+              name: newCrop.name,
+              currentYield: parseFloat(newCrop.currentYield),
+              targetYield: newCrop.targetYield ? parseFloat(newCrop.targetYield) : 0,
+              unit: newCrop.unit,
+              season: newCrop.season,
+              plantedDate: newCrop.plantedDate,
+              harvestDate: newCrop.harvestDate,
+              notes: newCrop.notes,
+            }
+          : crop
+      ));
+      setEditingId(null);
+      setNewCrop({
+        name: '',
+        currentYield: '',
+        targetYield: '',
+        unit: 'kg',
+        season: 'Summer 2023',
+        plantedDate: '',
+        harvestDate: '',
+        notes: '',
+      });
+      return;
+    }
 
-    setCrops([...crops, newEntry]);
-     triggerDashboardRefresh();
-    setNewCrop({
-      name: '',
-      currentYield: '',
-      targetYield: '',
-      unit: 'kg',
-      season: 'Summer 2023',
-      plantedDate: '',
-      harvestDate: '',
-      notes: '',
-    });
-  } catch (err) {
-    setError(err.message);
-  } finally {
-    setLoading(false);
-  }
-};
+    // Add new crop by posting to backend
+    try {
+      setLoading(true);
+      setError(null);
+      
+      const postBody = {
+        cropName: newCrop.name,
+        quantity: parseFloat(newCrop.currentYield),
+        targetYield: newCrop.targetYield ? parseFloat(newCrop.targetYield) : 0,
+        unit: newCrop.unit,
+        season: newCrop.season,
+        plantedDate: newCrop.plantedDate,
+        harvestDate: newCrop.harvestDate,
+        notes: newCrop.notes || '',
+      };
+
+      const res = await fetch(`${BACKEND_URL}/api/yields`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify(postBody),
+      });
+
+      if (!res.ok) {
+        const errData = await res.json();
+        throw new Error(errData.message || 'Failed to add crop');
+      }
+
+      const created = await res.json();
+
+      const newEntry = {
+        id: created._id,
+        name: created.cropName,
+        currentYield: created.quantity,
+        targetYield: created.targetYield || 0,
+        unit: created.unit || 'kg',
+        season: created.season || 'Summer 2023',
+        plantedDate: created.plantedDate || '',
+        harvestDate: created.harvestDate || '',
+        notes: created.notes || '',
+      };
+
+      setCrops([...crops, newEntry]);
+      triggerDashboardRefresh();
+      setNewCrop({
+        name: '',
+        currentYield: '',
+        targetYield: '',
+        unit: 'kg',
+        season: 'Summer 2023',
+        plantedDate: '',
+        harvestDate: '',
+        notes: '',
+      });
+    } catch (err) {
+      setError(err.message);
+    } finally {
+      setLoading(false);
+    }
+  };
+
   // Edit crop - load crop info into form
   const editCrop = (id) => {
     const cropToEdit = crops.find(crop => crop.id === id);
@@ -190,12 +192,12 @@ const addCrop = async () => {
   const deleteCrop = async (id) => {
     if (!window.confirm('Are you sure you want to delete this crop?')) return;
 
-    const token = localStorage.getItem('token'); // adapt as needed
+    const token = localStorage.getItem('token'); 
     try {
       setLoading(true);
       setError(null);
 
-      const res = await fetch(`/api/yields/${id}`, {
+      const res = await fetch(`${BACKEND_URL}/api/yields/${id}`, {
         method: 'DELETE',
         headers: {
           Authorization: `Bearer ${token}`,
@@ -229,17 +231,15 @@ const addCrop = async () => {
     }
   };
 
+  // Export PDF function remains unchanged
   const exportToPDF = () => {
     const doc = new jsPDF();
-
     doc.setFontSize(20);
     doc.setTextColor(40, 167, 69);
     doc.text('Crop Management Report', 105, 20, { align: 'center' });
-
     doc.setFontSize(12);
     doc.setTextColor(100);
     doc.text(`Generated on: ${new Date().toLocaleDateString()}`, 105, 30, { align: 'center' });
-
     doc.setFontSize(16);
     doc.setTextColor(40, 167, 69);
     doc.text('Crop Inventory', 14, 45);
@@ -271,11 +271,12 @@ const addCrop = async () => {
     doc.save(`crop-management-${new Date().toISOString().slice(0,10)}.pdf`);
   };
 
-  // Calculate performance metrics
+  // Performance metrics calculation remains unchanged
   const performanceMetrics = crops.map(crop => ({
     ...crop,
     progress: crop.targetYield > 0 ? (crop.currentYield / crop.targetYield) * 100 : 0
   }));
+
 
   return (
     <div className="grid grid-cols-1 lg:grid-cols-4 gap-6">
