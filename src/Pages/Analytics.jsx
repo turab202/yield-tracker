@@ -61,12 +61,12 @@ const Analytics = ({ darkMode }) => {
       const seasonsResult = seasonsRes.data;
 
       const transformedData = data.map(entry => ({
-        season: entry.season,
-        ...entry.yields.reduce((acc, yieldEntry) => {
-          acc[yieldEntry.cropName] = yieldEntry.quantity;
-          return acc;
-        }, {}),
-      }));
+  season: entry.season,
+  ...((entry.yields || []).reduce((acc, yieldEntry) => {
+    acc[yieldEntry.cropName] = yieldEntry.quantity;
+    return acc;
+  }, {}))
+}));
 
       let extractedSeasons = [];
       if (Array.isArray(seasonsResult)) {
