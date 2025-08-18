@@ -2,7 +2,7 @@
 import axios from 'axios';
 
 const api = axios.create({
-  baseURL: 'http://localhost:5000/api', // Adjust this to your backend URL
+  baseURL: 'https://farming-c693.onrender.com/api', // Adjust this to your backend URL
 });
 
 // Add request interceptor to include auth token
