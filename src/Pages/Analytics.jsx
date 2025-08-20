@@ -6,7 +6,7 @@ import { FaFilePdf as ExportIcon } from 'react-icons/fa';
 import { jsPDF } from 'jspdf';
 import 'jspdf-autotable';
 import { Switch } from '@headlessui/react';
-import api from '../utils/api'; // ✅ use axios instance
+import api from '../utils/api';
 
 const Analytics = ({ darkMode }) => {
   const [crops, setCrops] = useState([]);
@@ -20,19 +20,22 @@ const Analytics = ({ darkMode }) => {
   const [selectedSeasonsForComparison, setSelectedSeasonsForComparison] = useState([]);
   const [chartType, setChartType] = useState('bar');
 
-  // Fetch current crop yields and historical data on mount
+  // Fetch data on mount
   useEffect(() => {
-    fetchCrops();
-    fetchHistoricalData();
+    fetchAllData();
   }, []);
 
-  const fetchCrops = async () => {
+  const fetchAllData = async () => {
     setLoading(true);
     setError(null);
     try {
-      const res = await api.get('/yields'); // ✅ use axios
-      const data = res.data;
-      const mapped = data.map(item => ({
+      const [cropsRes, historyRes] = await Promise.all([
+        api.get('/yields'),
+        api.get('/yield-histories')
+      ]);
+
+      // Process current crops
+      const cropsData = cropsRes.data.map(item => ({
         id: item._id,
         name: item.cropName,
         currentYield: item.quantity,
@@ -40,47 +43,31 @@ const Analytics = ({ darkMode }) => {
         unit: item.unit || 'kg',
         season: item.season || 'Unknown',
       }));
-      setCrops(mapped);
-    } catch (err) {
-      setError(err.message);
-    } finally {
-      setLoading(false);
-    }
-  };
+      setCrops(cropsData);
 
-  const fetchHistoricalData = async () => {
-    setLoading(true);
-    setError(null);
-    try {
-      const [dataRes, seasonsRes] = await Promise.all([
-        api.get('/yield-histories'), // ✅ use axios
-        api.get('/yield-histories/seasons'),
-      ]);
-
-      const data = dataRes.data;
-      const seasonsResult = seasonsRes.data;
-
-      const transformedData = data.map(entry => ({
-  season: entry.season,
-  ...((entry.yields || []).reduce((acc, yieldEntry) => {
-    acc[yieldEntry.cropName] = yieldEntry.quantity;
-    return acc;
-  }, {}))
-}));
-
-      let extractedSeasons = [];
-      if (Array.isArray(seasonsResult)) {
-        extractedSeasons = seasonsResult;
-      } else if (seasonsResult?.seasons) {
-        extractedSeasons = seasonsResult.seasons;
-      } else if (seasonsResult?.data) {
-        extractedSeasons = seasonsResult.data;
-      }
+      // Process historical data
+      const historicalData = historyRes.data;
+      
+      // Transform historical data to proper format
+      const transformedData = historicalData.map(entry => {
+        const seasonEntry = { season: entry.season };
+        
+        // Add each crop's yield data
+        (entry.yields || []).forEach(yieldEntry => {
+          seasonEntry[yieldEntry.cropName] = yieldEntry.quantity;
+        });
+        
+        return seasonEntry;
+      });
 
       setHistoricalData(transformedData);
-      setSeasons([...new Set(extractedSeasons.filter(s => s))]);
+      
+      // Extract unique seasons
+      const uniqueSeasons = [...new Set(historicalData.map(item => item.season).filter(Boolean))];
+      setSeasons(uniqueSeasons);
+
     } catch (err) {
-      console.error('Error:', err);
+      console.error('Error fetching data:', err);
       setError(err.message);
     } finally {
       setLoading(false);
@@ -105,16 +92,69 @@ const Analytics = ({ darkMode }) => {
     }
   };
 
-  // Calculate performance with safe zero division check
+  // Calculate performance metrics
   const performanceMetrics = crops.map(crop => ({
     ...crop,
     progress: crop.targetYield > 0 ? (crop.currentYield / crop.targetYield) * 100 : 0,
   }));
 
-  const cropColors = {
-    Wheat: '#f59e0b',
-    Corn: '#10b981',
-    Soybeans: '#3b82f6',
+  // Generate colors for crops
+  const generateCropColors = () => {
+    const colors = [
+      '#4ade80', '#fbbf24', '#60a5fa', '#f87171', '#a78bfa',
+      '#fb7185', '#06b6d4', '#f97316', '#84cc16', '#6366f1',
+      '#ec4899', '#10b981', '#f59e0b', '#3b82f6', '#ef4444'
+    ];
+    
+    const cropColors = {};
+    crops.forEach((crop, index) => {
+      cropColors[crop.name] = colors[index % colors.length];
+    });
+    
+    return cropColors;
+  };
+
+  const cropColors = generateCropColors();
+
+  // Get data for comparison charts
+  const getComparisonChartData = () => {
+    // If comparing seasons
+    if (selectedSeasonsForComparison.length > 0) {
+      const selectedCropNames = crops
+        .filter(crop => selectedCropsForComparison.length === 0 || selectedCropsForComparison.includes(crop.id))
+        .map(crop => crop.name);
+
+      return historicalData
+        .filter(data => selectedSeasonsForComparison.includes(data.season))
+        .map(seasonData => {
+          const entry = { name: seasonData.season };
+          
+          // Add yield for each selected crop
+          selectedCropNames.forEach(cropName => {
+            entry[cropName] = seasonData[cropName] || 0;
+          });
+          
+          return entry;
+        });
+    }
+    
+    // If comparing crops
+    if (selectedCropsForComparison.length > 0) {
+      return crops
+        .filter(crop => selectedCropsForComparison.includes(crop.id))
+        .map(crop => ({
+          name: crop.name,
+          currentYield: crop.currentYield,
+          targetYield: crop.targetYield,
+        }));
+    }
+    
+    return [];
+  };
+
+  // Check if comparison data is available
+  const hasComparisonData = () => {
+    return getComparisonChartData().length > 0;
   };
 
   // Export to PDF
@@ -147,6 +187,10 @@ const Analytics = ({ darkMode }) => {
 
     doc.save(`yield-analytics-${new Date().toISOString().slice(0, 10)}.pdf`);
   };
+
+  const comparisonChartData = getComparisonChartData();
+  const isSeasonComparison = selectedSeasonsForComparison.length > 0;
+  const isCropComparison = selectedCropsForComparison.length > 0 && selectedSeasonsForComparison.length === 0;
 
   return (
     <div className={`rounded-xl p-6 shadow-md ${darkMode ? 'bg-gray-800' : 'bg-white'}`}>
@@ -199,144 +243,15 @@ const Analytics = ({ darkMode }) => {
         <p className="text-center text-red-500 mb-4">{error}</p>
       )}
 
-      {/* Main Chart */}
-      <div className="h-96 mb-8">
-        {chartType === 'bar' ? (
-          <ResponsiveContainer width="100%" height="100%">
-            <BarChart data={performanceMetrics} margin={{ top: 20, right: 30, left: 20, bottom: 5 }}>
-              <CartesianGrid strokeDasharray="3 3" stroke={darkMode ? '#4B5563' : '#E5E7EB'} />
-              <XAxis dataKey="name" stroke={darkMode ? '#9CA3AF' : '#6B7280'} />
-              <YAxis stroke={darkMode ? '#9CA3AF' : '#6B7280'} />
-              <Tooltip
-                contentStyle={darkMode ? {
-                  backgroundColor: '#1F2937',
-                  borderColor: '#374151',
-                  color: '#F3F4F6'
-                } : null}
-              />
-              <Legend />
-              <Bar dataKey="currentYield" fill={cropColors.Wheat} name="Current Yield" />
-              <Bar dataKey="targetYield" fill={cropColors.Corn} name="Target Yield" />
-            </BarChart>
-          </ResponsiveContainer>
-        ) : (
-          <ResponsiveContainer width="100%" height="100%">
-            <LineChart data={performanceMetrics} margin={{ top: 20, right: 30, left: 20, bottom: 5 }}>
-              <CartesianGrid strokeDasharray="3 3" stroke={darkMode ? '#4B5563' : '#E5E7EB'} />
-              <XAxis dataKey="name" stroke={darkMode ? '#9CA3AF' : '#6B7280'} />
-              <YAxis stroke={darkMode ? '#9CA3AF' : '#6B7280'} />
-              <Tooltip
-                contentStyle={darkMode ? {
-                  backgroundColor: '#1F2937',
-                  borderColor: '#374151',
-                  color: '#F3F4F6'
-                } : null}
-              />
-              <Legend />
-              <Line type="monotone" dataKey="currentYield" stroke={cropColors.Wheat} name="Current Yield" />
-              <Line type="monotone" dataKey="targetYield" stroke={cropColors.Corn} name="Target Yield" />
-            </LineChart>
-          </ResponsiveContainer>
-        )}
-      </div>
-
-      {/* Comparison Section */}
-      <div className="mt-8">
-        <div className="flex justify-between items-center mb-4">
-          <h3 className={`text-lg font-semibold ${darkMode ? 'text-blue-400' : 'text-blue-600'}`}>
-            Data Comparison
-          </h3>
-          <label className="flex items-center space-x-2 cursor-pointer">
-            <span className={`text-sm ${darkMode ? 'text-gray-300' : 'text-gray-600'}`}>Comparison Mode</span>
-            <Switch
-              checked={comparisonMode}
-              onChange={setComparisonMode}
-              className={`${comparisonMode ? 'bg-blue-600' : 'bg-gray-200'} relative cursor-pointer inline-flex h-6 w-11 items-center rounded-full`}
-            >
-              <span className="sr-only">Comparison mode</span>
-              <span
-                className={`${comparisonMode ? 'translate-x-6' : 'translate-x-1'} inline-block h-4 w-4 transform rounded-full bg-white transition`}
-              />
-            </Switch>
-          </label>
-        </div>
-
-        {comparisonMode && (
-          <div className={`p-4 rounded-lg ${darkMode ? 'bg-gray-700' : 'bg-gray-50'} mb-6`}>
-            <h4 className={`text-md font-medium mb-3 ${darkMode ? 'text-gray-300' : 'text-gray-700'}`}>
-              Select Crops to Compare
-            </h4>
-            <div className="flex flex-wrap gap-2 mb-4">
-              {crops.map(crop => (
-                <button
-                  key={crop.id}
-                  onClick={() => toggleComparison(crop.id)}
-                  className={`px-3 py-1 rounded-full text-sm cursor-pointer ${
-                    selectedCropsForComparison.includes(crop.id)
-                      ? darkMode
-                        ? 'bg-green-600 text-white'
-                        : 'bg-green-100 text-green-700'
-                      : darkMode
-                        ? 'bg-gray-600 text-gray-300'
-                        : 'bg-gray-200 text-gray-700'
-                  }`}
-                >
-                  {crop.name}
-                </button>
-              ))}
-            </div>
-
-            <h4 className={`text-md font-medium mb-3 ${darkMode ? 'text-gray-300' : 'text-gray-700'}`}>
-              Select Seasons to Compare
-            </h4>
-           <div className="flex flex-wrap gap-2">
-             {seasons.map(season => (
-               <button
-                 key={season}
-                 onClick={() => toggleSeasonComparison(season)}
-                 className={`px-3 py-1 rounded-full text-sm cursor-pointer ${
-                   selectedSeasonsForComparison.includes(season)
-                     ? darkMode
-                       ? 'bg-blue-600 text-white'
-                       : 'bg-blue-100 text-blue-700'
-                     : darkMode
-                       ? 'bg-gray-600 text-gray-300'
-                       : 'bg-gray-200 text-gray-700'
-                 }`}
-               >
-                 {season}
-               </button>
-             ))}
-           </div>
-          </div>
-        )}
-
-        {comparisonMode && (selectedCropsForComparison.length > 0 || selectedSeasonsForComparison.length > 0) && (
-          <div className="h-96 mt-6">
-            {/* Comparison Chart */}
+      {!loading && !error && (
+        <>
+          {/* Main Chart */}
+          <div className="h-96 mb-8">
             {chartType === 'bar' ? (
               <ResponsiveContainer width="100%" height="100%">
-                <BarChart
-                  data={
-                    selectedSeasonsForComparison.length > 0
-                      ? historicalData
-                          .filter(data => selectedSeasonsForComparison.includes(data.season))
-                          .map(seasonData => {
-                            const seasonEntry = { season: seasonData.season };
-                            crops.forEach(crop => {
-                              seasonEntry[crop.name] = seasonData[crop.name] || 0;
-                            });
-                            return seasonEntry;
-                          })
-                      : performanceMetrics.filter(crop => selectedCropsForComparison.includes(crop.id))
-                  }
-                  margin={{ top: 20, right: 30, left: 20, bottom: 5 }}
-                >
+                <BarChart data={performanceMetrics} margin={{ top: 20, right: 30, left: 20, bottom: 5 }}>
                   <CartesianGrid strokeDasharray="3 3" stroke={darkMode ? '#4B5563' : '#E5E7EB'} />
-                  <XAxis
-                    dataKey={selectedSeasonsForComparison.length > 0 ? 'season' : 'name'}
-                    stroke={darkMode ? '#9CA3AF' : '#6B7280'}
-                  />
+                  <XAxis dataKey="name" stroke={darkMode ? '#9CA3AF' : '#6B7280'} />
                   <YAxis stroke={darkMode ? '#9CA3AF' : '#6B7280'} />
                   <Tooltip
                     contentStyle={darkMode ? {
@@ -346,46 +261,15 @@ const Analytics = ({ darkMode }) => {
                     } : null}
                   />
                   <Legend />
-                  {selectedSeasonsForComparison.length > 0 ? (
-                    crops.map(crop => (
-                      <Bar
-                        key={crop.id}
-                        dataKey={crop.name}
-                        fill={cropColors[crop.name] || '#8884d8'}
-                        name={crop.name}
-                      />
-                    ))
-                  ) : (
-                    <>
-                      <Bar dataKey="currentYield" fill="#4ade80" name="Current Yield" />
-                      <Bar dataKey="targetYield" fill="#fbbf24" name="Target Yield" />
-                    </>
-                  )}
+                  <Bar dataKey="currentYield" fill="#4ade80" name="Current Yield" />
+                  <Bar dataKey="targetYield" fill="#fbbf24" name="Target Yield" />
                 </BarChart>
               </ResponsiveContainer>
             ) : (
               <ResponsiveContainer width="100%" height="100%">
-                <LineChart
-                  data={
-                    selectedSeasonsForComparison.length > 0
-                      ? historicalData
-                          .filter(data => selectedSeasonsForComparison.includes(data.season))
-                          .map(seasonData => {
-                            const seasonEntry = { season: seasonData.season };
-                            crops.forEach(crop => {
-                              seasonEntry[crop.name] = seasonData[crop.name] || 0;
-                            });
-                            return seasonEntry;
-                          })
-                      : performanceMetrics.filter(crop => selectedCropsForComparison.includes(crop.id))
-                  }
-                  margin={{ top: 20, right: 30, left: 20, bottom: 5 }}
-                >
+                <LineChart data={performanceMetrics} margin={{ top: 20, right: 30, left: 20, bottom: 5 }}>
                   <CartesianGrid strokeDasharray="3 3" stroke={darkMode ? '#4B5563' : '#E5E7EB'} />
-                  <XAxis
-                    dataKey={selectedSeasonsForComparison.length > 0 ? 'season' : 'name'}
-                    stroke={darkMode ? '#9CA3AF' : '#6B7280'}
-                  />
+                  <XAxis dataKey="name" stroke={darkMode ? '#9CA3AF' : '#6B7280'} />
                   <YAxis stroke={darkMode ? '#9CA3AF' : '#6B7280'} />
                   <Tooltip
                     contentStyle={darkMode ? {
@@ -395,28 +279,191 @@ const Analytics = ({ darkMode }) => {
                     } : null}
                   />
                   <Legend />
-                  {selectedSeasonsForComparison.length > 0 ? (
-                    crops.map(crop => (
-                      <Line
-                        key={crop.id}
-                        type="monotone"
-                        dataKey={crop.name}
-                        stroke={cropColors[crop.name] || '#8884d8'}
-                        name={crop.name}
-                      />
-                    ))
-                  ) : (
-                    <>
-                      <Line type="monotone" dataKey="currentYield" stroke="#4ade80" name="Current Yield" />
-                      <Line type="monotone" dataKey="targetYield" stroke="#fbbf24" name="Target Yield" />
-                    </>
-                  )}
+                  <Line type="monotone" dataKey="currentYield" stroke="#4ade80" name="Current Yield" />
+                  <Line type="monotone" dataKey="targetYield" stroke="#fbbf24" name="Target Yield" />
                 </LineChart>
               </ResponsiveContainer>
             )}
           </div>
-        )}
-      </div>
+
+          {/* Comparison Section */}
+          <div className="mt-8">
+            <div className="flex justify-between items-center mb-4">
+              <h3 className={`text-lg font-semibold ${darkMode ? 'text-blue-400' : 'text-blue-600'}`}>
+                Data Comparison
+              </h3>
+              <label className="flex items-center space-x-2 cursor-pointer">
+                <span className={`text-sm ${darkMode ? 'text-gray-300' : 'text-gray-600'}`}>Comparison Mode</span>
+                <Switch
+                  checked={comparisonMode}
+                  onChange={setComparisonMode}
+                  className={`${comparisonMode ? 'bg-blue-600' : 'bg-gray-200'} relative cursor-pointer inline-flex h-6 w-11 items-center rounded-full`}
+                >
+                  <span className="sr-only">Comparison mode</span>
+                  <span
+                    className={`${comparisonMode ? 'translate-x-6' : 'translate-x-1'} inline-block h-4 w-4 transform rounded-full bg-white transition`}
+                  />
+                </Switch>
+              </label>
+            </div>
+
+            {comparisonMode && (
+              <div className={`p-4 rounded-lg ${darkMode ? 'bg-gray-700' : 'bg-gray-50'} mb-6`}>
+                <h4 className={`text-md font-medium mb-3 ${darkMode ? 'text-gray-300' : 'text-gray-700'}`}>
+                  Select Crops to Compare
+                </h4>
+                <div className="flex flex-wrap gap-2 mb-4">
+                  {crops.map(crop => (
+                    <button
+                      key={crop.id}
+                      onClick={() => toggleComparison(crop.id)}
+                      className={`px-3 py-1 rounded-full text-sm cursor-pointer ${
+                        selectedCropsForComparison.includes(crop.id)
+                          ? darkMode
+                            ? 'bg-green-600 text-white'
+                            : 'bg-green-100 text-green-700'
+                          : darkMode
+                            ? 'bg-gray-600 text-gray-300'
+                            : 'bg-gray-200 text-gray-700'
+                      }`}
+                    >
+                      {crop.name}
+                    </button>
+                  ))}
+                </div>
+
+                <h4 className={`text-md font-medium mb-3 ${darkMode ? 'text-gray-300' : 'text-gray-700'}`}>
+                  Select Seasons to Compare
+                </h4>
+                <div className="flex flex-wrap gap-2">
+                  {seasons.map(season => (
+                    <button
+                      key={season}
+                      onClick={() => toggleSeasonComparison(season)}
+                      className={`px-3 py-1 rounded-full text-sm cursor-pointer ${
+                        selectedSeasonsForComparison.includes(season)
+                          ? darkMode
+                            ? 'bg-blue-600 text-white'
+                            : 'bg-blue-100 text-blue-700'
+                          : darkMode
+                            ? 'bg-gray-600 text-gray-300'
+                            : 'bg-gray-200 text-gray-700'
+                      }`}
+                    >
+                      {season}
+                    </button>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {comparisonMode && hasComparisonData() && (
+              <div className="h-96 mt-6">
+                <h4 className={`text-md font-medium mb-4 ${darkMode ? 'text-gray-300' : 'text-gray-700'}`}>
+                  {isSeasonComparison ? 'Season Comparison' : 'Crop Comparison'}
+                </h4>
+                
+                {chartType === 'bar' ? (
+                  <ResponsiveContainer width="100%" height="100%">
+                    <BarChart
+                      data={comparisonChartData}
+                      margin={{ top: 20, right: 30, left: 20, bottom: 5 }}
+                    >
+                      <CartesianGrid strokeDasharray="3 3" stroke={darkMode ? '#4B5563' : '#E5E7EB'} />
+                      <XAxis
+                        dataKey="name"
+                        stroke={darkMode ? '#9CA3AF' : '#6B7280'}
+                      />
+                      <YAxis stroke={darkMode ? '#9CA3AF' : '#6B7280'} />
+                      <Tooltip
+                        contentStyle={darkMode ? {
+                          backgroundColor: '#1F2937',
+                          borderColor: '#374151',
+                          color: '#F3F4F6'
+                        } : null}
+                      />
+                      <Legend />
+                      
+                      {isSeasonComparison ? (
+                        // Show individual crops as bars when comparing seasons
+                        crops
+                          .filter(crop => selectedCropsForComparison.length === 0 || selectedCropsForComparison.includes(crop.id))
+                          .map(crop => (
+                            <Bar
+                              key={crop.id}
+                              dataKey={crop.name}
+                              fill={cropColors[crop.name] || '#8884d8'}
+                              name={crop.name}
+                            />
+                          ))
+                      ) : (
+                        // Show current vs target when comparing crops
+                        <>
+                          <Bar dataKey="currentYield" fill="#4ade80" name="Current Yield" />
+                          <Bar dataKey="targetYield" fill="#fbbf24" name="Target Yield" />
+                        </>
+                      )}
+                    </BarChart>
+                  </ResponsiveContainer>
+                ) : (
+                  <ResponsiveContainer width="100%" height="100%">
+                    <LineChart
+                      data={comparisonChartData}
+                      margin={{ top: 20, right: 30, left: 20, bottom: 5 }}
+                    >
+                      <CartesianGrid strokeDasharray="3 3" stroke={darkMode ? '#4B5563' : '#E5E7EB'} />
+                      <XAxis
+                        dataKey="name"
+                        stroke={darkMode ? '#9CA3AF' : '#6B7280'}
+                      />
+                      <YAxis stroke={darkMode ? '#9CA3AF' : '#6B7280'} />
+                      <Tooltip
+                        contentStyle={darkMode ? {
+                          backgroundColor: '#1F2937',
+                          borderColor: '#374151',
+                          color: '#F3F4F6'
+                        } : null}
+                      />
+                      <Legend />
+                      
+                      {isSeasonComparison ? (
+                        // Show individual crops as lines when comparing seasons
+                        crops
+                          .filter(crop => selectedCropsForComparison.length === 0 || selectedCropsForComparison.includes(crop.id))
+                          .map(crop => (
+                            <Line
+                              key={crop.id}
+                              type="monotone"
+                              dataKey={crop.name}
+                              stroke={cropColors[crop.name] || '#8884d8'}
+                              name={crop.name}
+                            />
+                          ))
+                      ) : (
+                        // Show current vs target when comparing crops
+                        <>
+                          <Line type="monotone" dataKey="currentYield" stroke="#4ade80" name="Current Yield" />
+                          <Line type="monotone" dataKey="targetYield" stroke="#fbbf24" name="Target Yield" />
+                        </>
+                      )}
+                    </LineChart>
+                  </ResponsiveContainer>
+                )}
+              </div>
+            )}
+
+            {comparisonMode && !hasComparisonData() && (
+              <div className={`p-4 rounded-lg ${darkMode ? 'bg-gray-700' : 'bg-gray-100'} text-center`}>
+                <p className={darkMode ? 'text-gray-300' : 'text-gray-600'}>
+                  {selectedCropsForComparison.length === 0 && selectedSeasonsForComparison.length === 0
+                    ? 'Please select crops or seasons to compare'
+                    : 'No data available for the selected comparison'}
+                </p>
+              </div>
+            )}
+          </div>
+        </>
+      )}
     </div>
   );
 };

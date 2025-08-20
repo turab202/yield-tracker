@@ -12,7 +12,8 @@ const CropManagement = ({ darkMode }) => {
     currentYield: '',
     targetYield: '',
     unit: 'kg',
-    season: 'Summer 2023',
+    season: '',
+    year: new Date().getFullYear(),
     plantedDate: '',
     harvestDate: ''
   });
@@ -20,6 +21,10 @@ const CropManagement = ({ darkMode }) => {
   const [editingId, setEditingId] = useState(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
+
+  // Available seasons and years
+  const seasons = ['Winter', 'Spring', 'Summer', 'Fall'];
+  const years = [2023, 2024, 2025, 2026, 2027];
 
   // Fetch crops (yields) from backend on mount
   useEffect(() => {
@@ -30,7 +35,6 @@ const CropManagement = ({ darkMode }) => {
     setLoading(true);
     setError(null);
     try {
-      // Check if environment variable is set
       const baseUrl = import.meta.env.VITE_API_BASE_URL;
       if (!baseUrl) {
         throw new Error('API base URL is not configured');
@@ -56,7 +60,8 @@ const CropManagement = ({ darkMode }) => {
         currentYield: y.quantity,
         targetYield: y.targetYield || 0,
         unit: y.unit || 'kg',
-        season: y.season || 'Summer 2023',
+        season: y.season || '',
+        year: y.year || new Date().getFullYear(),
         plantedDate: y.plantedDate || '',
         harvestDate: y.harvestDate || '',
         notes: y.notes || '',
@@ -76,13 +81,18 @@ const CropManagement = ({ darkMode }) => {
     setNewCrop({ ...newCrop, [name]: value });
   };
 
+  const getFullSeason = () => {
+    return `${newCrop.season} ${newCrop.year}`;
+  };
+
   const addCrop = async () => {
-    if (!newCrop.name || !newCrop.currentYield) {
-      alert('Please fill required fields: Crop Name and Current Yield.');
+    if (!newCrop.name || !newCrop.currentYield || !newCrop.season) {
+      alert('Please fill required fields: Crop Name, Current Yield, and Season.');
       return;
     }
 
     const token = localStorage.getItem('token');
+    const fullSeason = getFullSeason();
 
     if (editingId) {
       try {
@@ -99,7 +109,8 @@ const CropManagement = ({ darkMode }) => {
           quantity: parseFloat(newCrop.currentYield),
           targetYield: newCrop.targetYield ? parseFloat(newCrop.targetYield) : 0,
           unit: newCrop.unit,
-          season: newCrop.season,
+          season: fullSeason,
+          year: parseInt(newCrop.year),
           plantedDate: newCrop.plantedDate,
           harvestDate: newCrop.harvestDate,
           notes: newCrop.notes || '',
@@ -127,7 +138,8 @@ const CropManagement = ({ darkMode }) => {
             currentYield: updated.quantity,
             targetYield: updated.targetYield || 0,
             unit: updated.unit || 'kg',
-            season: updated.season || 'Summer 2023',
+            season: updated.season || fullSeason,
+            year: updated.year || parseInt(newCrop.year),
             plantedDate: updated.plantedDate || '',
             harvestDate: updated.harvestDate || '',
             notes: updated.notes || '',
@@ -140,7 +152,8 @@ const CropManagement = ({ darkMode }) => {
           currentYield: '',
           targetYield: '',
           unit: 'kg',
-          season: 'Summer 2023',
+          season: '',
+          year: new Date().getFullYear(),
           plantedDate: '',
           harvestDate: '',
           notes: '',
@@ -170,7 +183,8 @@ const CropManagement = ({ darkMode }) => {
         quantity: parseFloat(newCrop.currentYield),
         targetYield: newCrop.targetYield ? parseFloat(newCrop.targetYield) : 0,
         unit: newCrop.unit,
-        season: newCrop.season,
+        season: fullSeason,
+        year: parseInt(newCrop.year),
         plantedDate: newCrop.plantedDate,
         harvestDate: newCrop.harvestDate,
         notes: newCrop.notes || '',
@@ -197,7 +211,8 @@ const CropManagement = ({ darkMode }) => {
         currentYield: created.quantity,
         targetYield: created.targetYield || 0,
         unit: created.unit || 'kg',
-        season: created.season || 'Summer 2023',
+        season: created.season || fullSeason,
+        year: created.year || parseInt(newCrop.year),
         plantedDate: created.plantedDate || '',
         harvestDate: created.harvestDate || '',
         notes: created.notes || '',
@@ -210,7 +225,8 @@ const CropManagement = ({ darkMode }) => {
         currentYield: '',
         targetYield: '',
         unit: 'kg',
-        season: 'Summer 2023',
+        season: '',
+        year: new Date().getFullYear(),
         plantedDate: '',
         harvestDate: '',
         notes: '',
@@ -226,12 +242,18 @@ const CropManagement = ({ darkMode }) => {
   const editCrop = (id) => {
     const cropToEdit = crops.find(crop => crop.id === id);
     if (cropToEdit) {
+      // Extract season and year from the full season string
+      const seasonParts = cropToEdit.season.split(' ');
+      const season = seasonParts[0];
+      const year = seasonParts[1] || new Date().getFullYear();
+      
       setNewCrop({
         name: cropToEdit.name,
         currentYield: cropToEdit.currentYield,
         targetYield: cropToEdit.targetYield,
         unit: cropToEdit.unit,
-        season: cropToEdit.season,
+        season: season,
+        year: parseInt(year),
         plantedDate: cropToEdit.plantedDate,
         harvestDate: cropToEdit.harvestDate,
         notes: cropToEdit.notes || '',
@@ -275,7 +297,8 @@ const CropManagement = ({ darkMode }) => {
           currentYield: '',
           targetYield: '',
           unit: 'kg',
-          season: 'Summer 2023',
+          season: '',
+          year: new Date().getFullYear(),
           plantedDate: '',
           harvestDate: '',
           notes: '',
@@ -353,7 +376,7 @@ const CropManagement = ({ darkMode }) => {
           <div className="space-y-3">
             <div>
               <label className={`block text-sm font-semibold mb-1 ${darkMode ? 'text-gray-300' : 'text-gray-700'}`}>
-                Crop Name
+                Crop Name *
               </label>
               <input
                 type="text"
@@ -365,7 +388,7 @@ const CropManagement = ({ darkMode }) => {
                     ? 'bg-gray-700 text-white border-gray-600' 
                     : 'bg-white border border-gray-300'
                 }`}
-                placeholder="e.g., Wheat, Corn"
+                placeholder="e.g., Wheat, Corn, Soybeans"
                 disabled={loading}
               />
             </div>
@@ -373,7 +396,7 @@ const CropManagement = ({ darkMode }) => {
             <div className="grid grid-cols-2 gap-3">
               <div>
                 <label className={`block text-sm font-semibold mb-1 ${darkMode ? 'text-gray-300' : 'text-gray-700'}`}>
-                  Current Yield
+                  Current Yield *
                 </label>
                 <input
                   type="number"
@@ -432,27 +455,49 @@ const CropManagement = ({ darkMode }) => {
               </select>
             </div>
 
-            {/* Season Field */}
-            <div>
-              <label className={`block text-sm font-semibold mb-1 ${darkMode ? 'text-gray-300' : 'text-gray-700'}`}>
-                Season
-              </label>
-              <select
-                name="season"
-                value={newCrop.season}
-                onChange={handleInputChange}
-                className={`w-full px-3 py-2 rounded-md focus:outline-none focus:ring-2 focus:ring-green-500 cursor-pointer ${
-                  darkMode
-                    ? 'bg-gray-700 text-gray-400 border-gray-600'
-                    : 'bg-white border text-gray-500 border-gray-300'
-                }`}
-                disabled={loading}
-              >
-                <option value="Winter 2023">Winter 2026</option>
-                <option value="Spring 2023">Spring 2026</option>
-                <option value="Summer 2023">Summer 2026</option>
-                <option value="Fall 2023">Fall 2026</option>
-              </select>
+            {/* Season and Year Fields */}
+            <div className="grid grid-cols-2 gap-3">
+              <div>
+                <label className={`block text-sm font-semibold mb-1 ${darkMode ? 'text-gray-300' : 'text-gray-700'}`}>
+                  Season *
+                </label>
+                <select
+                  name="season"
+                  value={newCrop.season}
+                  onChange={handleInputChange}
+                  className={`w-full px-3 py-2 rounded-md focus:outline-none focus:ring-2 focus:ring-green-500 cursor-pointer ${
+                    darkMode
+                      ? 'bg-gray-700 text-gray-400 border-gray-600'
+                      : 'bg-white border text-gray-500 border-gray-300'
+                  }`}
+                  disabled={loading}
+                >
+                  <option value="">Select Season</option>
+                  {seasons.map(season => (
+                    <option key={season} value={season}>{season}</option>
+                  ))}
+                </select>
+              </div>
+              <div>
+                <label className={`block text-sm font-semibold mb-1 ${darkMode ? 'text-gray-300' : 'text-gray-700'}`}>
+                  Year
+                </label>
+                <select
+                  name="year"
+                  value={newCrop.year}
+                  onChange={handleInputChange}
+                  className={`w-full px-3 py-2 rounded-md focus:outline-none focus:ring-2 focus:ring-green-500 cursor-pointer ${
+                    darkMode
+                      ? 'bg-gray-700 text-gray-400 border-gray-600'
+                      : 'bg-white border text-gray-500 border-gray-300'
+                  }`}
+                  disabled={loading}
+                >
+                  {years.map(year => (
+                    <option key={year} value={year}>{year}</option>
+                  ))}
+                </select>
+              </div>
             </div>
 
             {/* Notes Field */}
